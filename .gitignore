@@ -1,0 +1,20 @@
+.build/
+build/
+.DS_Store
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+*.log
+.env
+.env.*
+!.env.example
+# Runtime state belongs in Application Support, never in source control.
+profiles.json
+profiles.*.json
+recovery.json
+heartbeat.json
+guard-ready.json
+*.p12
+*.p8
+*.key
+*.mobileprovision

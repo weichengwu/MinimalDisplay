@@ -1,0 +1,36 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and package
+        run: zsh scripts/build-app.sh
+      - name: Verify archives
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          cd build
+          for archive in MinimalDisplay-*.zip; do
+            unzip -tq "$archive"
+            shasum -a 256 -c "$archive.sha256"
+          done
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: MinimalDisplay-${{ runner.arch }}
+          path: |
+            build/MinimalDisplay-*.zip
+            build/MinimalDisplay-*.zip.sha256
+          if-no-files-found: error
