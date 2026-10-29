@@ -89,6 +89,13 @@ final class AppModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func move(_ profile: DisplayProfile, by offset: Int) {
+        guard canEdit else { return }
+        do {
+            profiles = try store.move(id: profile.id, by: offset, in: profiles)
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     private var operations = 0
     private func perform(_ message: String, reportFailure: Bool = true, _ work: @escaping () throws -> Void,
                          completion: ((Bool) -> Void)? = nil) {

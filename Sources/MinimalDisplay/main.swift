@@ -25,7 +25,7 @@ if arguments.count == 5, arguments[1] == "--watchdog", let owner = Int32(argumen
 }
 if arguments.contains("--diagnose") {
     let driver = SystemDisplayDriver()
-    print("MinimalDisplay 1.0.7")
+    print("MinimalDisplay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")")
     print("System: \(ProcessInfo.processInfo.operatingSystemVersionString)")
     print("CGVirtualDisplay: \(driver.virtualAPIAvailable)")
     print("CGSConfigureDisplayEnabled: \(driver.disableAPIAvailable)")
@@ -133,7 +133,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let profile = model.profiles.first(where: { $0.id.uuidString == id }) else { return }
         model.activate(profile)
     }
-    @objc private func restoreScreen() { model.restore() }
+    @objc private func restoreScreen() { requestRestore(source: "menu") }
+    private func requestRestore(source: String) {
+        model.files.log("Restore requested: \(source)")
+        model.restore { [weak self] success in
+            self?.model.files.log("Restore request completed: \(source), success=\(success)")
+        }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func openSettings() {
         if settings == nil {
@@ -154,19 +160,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings?.makeFirstResponder(nil)
     }
     private func installHotkey() {
+        // Attach directly to the Carbon dispatcher rather than relying on Cocoa
+        // to forward the hotkey to the application target of an accessory app.
+        let target = GetEventDispatcherTarget()
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
-        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
-            guard let context else { return noErr }
+        let handlerStatus = InstallEventHandler(target, { _, event, context in
+            guard let event, let context else { return OSStatus(eventNotHandledErr) }
+            var identifier = EventHotKeyID()
+            let parameterStatus = GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &identifier)
+            guard parameterStatus == noErr, identifier.signature == 0x4D445350, identifier.id == 1 else {
+                return OSStatus(eventNotHandledErr)
+            }
             let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { delegate.model.restore() }
+            DispatchQueue.main.async { delegate.requestRestore(source: "hotkey") }
             return noErr
         }, 1, &spec, context, &eventHandler)
+        model.files.log("Hotkey handler installed: status=\(handlerStatus), target=dispatcher")
+        guard handlerStatus == noErr else {
+            model.errorMessage = "恢复快捷键处理器安装失败（系统错误码 \(handlerStatus)）。请从菜单恢复物理屏。"
+            return
+        }
         let identifier = EventHotKeyID(signature: OSType(0x4D445350), id: 1)
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_9), UInt32(cmdKey | controlKey | optionKey), identifier,
-                                        GetApplicationEventTarget(), 0, &hotkey)
-        if status != noErr || handlerStatus != noErr {
-            model.errorMessage = "恢复快捷键 ⌃⌥⌘9 注册失败，可能被其他 App 占用。菜单恢复和独立恢复进程仍可使用。"
+                                        target, UInt32(kEventHotKeyExclusive), &hotkey)
+        model.files.log("Hotkey registered: Ctrl+Option+Command+9, status=\(status), exclusive=true")
+        if status != noErr {
+            if let eventHandler { RemoveEventHandler(eventHandler); self.eventHandler = nil }
+            let reason = status == eventHotKeyExistsErr ? "该组合已被其他 App 占用，请退出使用相同快捷键的 App 后重开。" : "请重新打开 App 后重试。"
+            model.errorMessage = "恢复快捷键 ⌃⌥⌘9 注册失败（系统错误码 \(status)）。\(reason)也可以从菜单恢复物理屏。"
         }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

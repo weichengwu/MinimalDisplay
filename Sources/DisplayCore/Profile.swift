@@ -92,4 +92,16 @@ public final class ProfileStore {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(values).write(to: url, options: .atomic)
     }
+
+    /// Return the new order only after it has been durably saved.
+    public func move(id: UUID, by offset: Int, in profiles: [DisplayProfile]) throws -> [DisplayProfile] {
+        guard offset == -1 || offset == 1,
+              let source = profiles.firstIndex(where: { $0.id == id }) else { return profiles }
+        let destination = source + offset
+        guard profiles.indices.contains(destination) else { return profiles }
+        var updated = profiles
+        updated.swapAt(source, destination)
+        try save(updated)
+        return updated
+    }
 }

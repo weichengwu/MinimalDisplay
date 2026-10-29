@@ -59,9 +59,7 @@ struct SettingsView: View {
                                     .disabled(!model.canActivate)
                                     .fixedSize()
                                 Menu {
-                                    Button("编辑配置") { editing = profile }.disabled(!model.canEdit)
-                                    Button("删除配置", role: .destructive) { model.delete(profile) }
-                                        .disabled(!model.canEdit || model.active?.id == profile.id)
+                                    profileActions(for: profile)
                                 } label: {
                                     Image(systemName: "ellipsis")
                                         .frame(width: 20, height: 20)
@@ -70,15 +68,14 @@ struct SettingsView: View {
                                 .menuStyle(.borderlessButton)
                                 .menuIndicator(.hidden)
                                 .fixedSize()
-                                .help("编辑或删除虚拟屏")
+                                .help("编辑、排序或删除虚拟屏")
                                 .accessibilityLabel("\(profile.name)的更多操作")
                             }
                             .padding(.vertical, 12)
                             .contextMenu {
                                 Button("切换到此虚拟屏") { model.activate(profile) }.disabled(!model.canActivate)
-                                Button("编辑配置") { editing = profile }.disabled(!model.canEdit)
-                                Button("删除配置", role: .destructive) { model.delete(profile) }
-                                    .disabled(!model.canEdit || model.active?.id == profile.id)
+                                Divider()
+                                profileActions(for: profile)
                             }
                             if profile.id != model.profiles.last?.id { Divider() }
                         }
@@ -116,6 +113,19 @@ struct SettingsView: View {
                                             set: { if !$0 { model.errorMessage = nil } })) {
             Button("关闭提示", role: .cancel) { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
+    }
+
+    @ViewBuilder
+    private func profileActions(for profile: DisplayProfile) -> some View {
+        Button("编辑配置") { editing = profile }.disabled(!model.canEdit)
+        Divider()
+        Button("上移") { model.move(profile, by: -1) }
+            .disabled(!model.canEdit || model.profiles.first?.id == profile.id)
+        Button("下移") { model.move(profile, by: 1) }
+            .disabled(!model.canEdit || model.profiles.last?.id == profile.id)
+        Divider()
+        Button("删除配置", role: .destructive) { model.delete(profile) }
+            .disabled(!model.canEdit || model.active?.id == profile.id)
     }
 
     private func setHiDPI(_ enabled: Bool, for profile: DisplayProfile) {

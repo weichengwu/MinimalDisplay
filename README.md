@@ -13,6 +13,7 @@
 ## 能做什么
 
 - 原生菜单栏操作，手动维护虚拟屏名称和分辨率。
+- 每条配置的「…」菜单或右键菜单支持「上移」「下移」，顺序自动保存并同步到菜单栏。
 - 一次启用一块虚拟屏，并停用原有内置屏及外接屏。
 - 每条配置独立选择「高清」（HiDPI），输入分辨率无需自己乘以 2。
 - 切换后持续使用，没有确认倒计时；编辑配置后，手动切换才会应用。
@@ -69,12 +70,12 @@ cd MinimalDisplay
 zsh scripts/build-app.sh
 ```
 
-脚本生成 `build/1.0.8/MinimalDisplay.app`、对应架构的 `build/MinimalDisplay-1.0.8-<arch>.zip` 及 SHA-256 文件。它只构建、签名和打包，不会启动 App 或修改显示设置。默认使用 ad-hoc 签名，可通过环境变量 `SIGN_IDENTITY` 指定已有签名身份；公证需另行处理。
+脚本生成 `build/1.0.10/MinimalDisplay.app`、对应架构的 `build/MinimalDisplay-1.0.10-<arch>.zip` 及 SHA-256 文件。它只构建、签名和打包，不会启动 App 或修改显示设置。默认使用 ad-hoc 签名，可通过环境变量 `SIGN_IDENTITY` 指定已有签名身份；公证需另行处理。
 
 本地校验下载包（在 ZIP 所在目录执行）：
 
 ```sh
-shasum -a 256 -c MinimalDisplay-1.0.8-arm64.zip.sha256
+shasum -a 256 -c MinimalDisplay-1.0.10-arm64.zip.sha256
 ```
 
 开发与非 UI 验证方法见 [CONTRIBUTING.md](CONTRIBUTING.md)，显示控制与恢复细节见 [技术说明](docs/architecture.md)。

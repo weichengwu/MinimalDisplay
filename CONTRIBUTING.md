@@ -27,7 +27,7 @@ zsh scripts/build-app.sh
 恢复进程集成验证使用全新临时目录、真实测试子进程，不创建或切换真实显示器，也不修改用户配置：
 
 ```sh
-build/1.0.8/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --verify-recovery-runtime
+build/1.0.10/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --verify-recovery-runtime
 ```
 
 真实关屏、恢复、远程断开重连和 UI 操作应单独手测，记录 macOS 版本、芯片、显示器和远程客户端。请明确区分构建通过、模拟测试通过和真实设备通过。

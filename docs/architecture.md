@@ -53,13 +53,13 @@ App 恢复显示器排列，不操控其他应用窗口，窗口原位置依赖 
 只读诊断，不启动 GUI、不修改显示设置：
 
 ```sh
-build/1.0.8/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --diagnose
+build/1.0.10/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --diagnose
 ```
 
 应急恢复会实际更改显示设置，仅在需要且主程序、恢复进程均已退出时由用户执行：
 
 ```sh
-build/1.0.8/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --restore
+build/1.0.10/MinimalDisplay.app/Contents/MacOS/MinimalDisplay --restore
 ```
 
 隔离的恢复进程验证方法见 [CONTRIBUTING.md](../CONTRIBUTING.md)。它不等同于真实关屏或异常恢复验收。
