@@ -8,7 +8,8 @@ let package = Package(
     targets: [
         .target(name: "DisplayBridge", cSettings: [.unsafeFlags(["-fobjc-arc"])],
                 linkerSettings: [.linkedFramework("CoreGraphics")]),
-        .target(name: "DisplayCore", dependencies: ["DisplayBridge"]),
+        .target(name: "DisplayCore", dependencies: ["DisplayBridge"],
+                linkerSettings: [.linkedFramework("Carbon")]),
         .executableTarget(name: "MinimalDisplay", dependencies: ["DisplayCore"],
                           linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("Carbon")]),
         .testTarget(name: "DisplayCoreTests", dependencies: ["DisplayCore"]),

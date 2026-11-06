@@ -30,9 +30,13 @@ if arguments.contains("--diagnose") {
     print("CGVirtualDisplay: \(driver.virtualAPIAvailable)")
     print("CGSConfigureDisplayEnabled: \(driver.disableAPIAvailable)")
     print("Privacy permissions required: none (manual display control)")
+    print("Secure event input: \(IsSecureEventInputEnabled())")
     do {
         for display in try driver.snapshot() {
             print("display=\(display.id), builtin=\(display.builtin), origin=\(display.x),\(display.y), uuid=\(display.uuid)")
+            if let mode = display.mode {
+                print("  mode=\(mode.width)x\(mode.height), pixels=\(mode.pixelWidth)x\(mode.pixelHeight), refresh=\(mode.refreshRate), modeID=\(mode.id)")
+            }
         }
         if let record = try StateFiles().readRecovery() {
             print("Recovery targets: \(record.disabled.map { String($0.id) }.joined(separator: ",")), bootScope=\(record.bootSessionID ?? "unavailable")")
@@ -63,8 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settings: NSWindow?
     private var subscriptions = Set<AnyCancellable>()
     private var appLock: InstanceLock?
-    private var hotkey: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
+    private lazy var restoreShortcut = RestoreShortcut(action: { [weak self] in
+        self?.requestRestore(source: "hotkey")
+    }, log: { [weak self] message in self?.model.files.log(message) })
+    private var hotkeyRefreshTimer: Timer?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var displayObserver: NSObjectProtocol?
+    private var lastHotkeyFailure: String?
     private var quitting = false
     private var exitReady = false
 
@@ -160,37 +169,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings?.makeFirstResponder(nil)
     }
     private func installHotkey() {
-        // Attach directly to the Carbon dispatcher rather than relying on Cocoa
-        // to forward the hotkey to the application target of an accessory app.
-        let target = GetEventDispatcherTarget()
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        let handlerStatus = InstallEventHandler(target, { _, event, context in
-            guard let event, let context else { return OSStatus(eventNotHandledErr) }
-            var identifier = EventHotKeyID()
-            let parameterStatus = GetEventParameter(event, EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &identifier)
-            guard parameterStatus == noErr, identifier.signature == 0x4D445350, identifier.id == 1 else {
-                return OSStatus(eventNotHandledErr)
-            }
-            let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { delegate.requestRestore(source: "hotkey") }
-            return noErr
-        }, 1, &spec, context, &eventHandler)
-        model.files.log("Hotkey handler installed: status=\(handlerStatus), target=dispatcher")
-        guard handlerStatus == noErr else {
-            model.errorMessage = "恢复快捷键处理器安装失败（系统错误码 \(handlerStatus)）。请从菜单恢复物理屏。"
-            return
+        refreshHotkey(reason: "launch")
+        let center = NSWorkspace.shared.notificationCenter
+        for (notification, reason) in [
+            (NSWorkspace.didWakeNotification, "wake"),
+            (NSWorkspace.screensDidWakeNotification, "screens-wake"),
+            (NSWorkspace.sessionDidBecomeActiveNotification, "session-active"),
+        ] {
+            workspaceObservers.append(center.addObserver(forName: notification, object: nil, queue: .main) { [weak self] _ in
+                self?.scheduleHotkeyRefresh(reason: reason)
+            })
         }
-        let identifier = EventHotKeyID(signature: OSType(0x4D445350), id: 1)
-        let status = RegisterEventHotKey(UInt32(kVK_ANSI_9), UInt32(cmdKey | controlKey | optionKey), identifier,
-                                        target, UInt32(kEventHotKeyExclusive), &hotkey)
-        model.files.log("Hotkey registered: Ctrl+Option+Command+9, status=\(status), exclusive=true")
-        if status != noErr {
-            if let eventHandler { RemoveEventHandler(eventHandler); self.eventHandler = nil }
-            let reason = status == eventHotKeyExistsErr ? "该组合已被其他 App 占用，请退出使用相同快捷键的 App 后重开。" : "请重新打开 App 后重试。"
-            model.errorMessage = "恢复快捷键 ⌃⌥⌘9 注册失败（系统错误码 \(status)）。\(reason)也可以从菜单恢复物理屏。"
-        }
+        displayObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main) { [weak self] _ in self?.scheduleHotkeyRefresh(reason: "display-configuration") }
+    }
+    private func scheduleHotkeyRefresh(reason: String) {
+        guard !quitting else { return }
+        hotkeyRefreshTimer?.invalidate()
+        // Let wake/display notifications settle and merge bursts into one registration.
+        let timer = Timer(timeInterval: 1, repeats: false) { [weak self] _ in self?.refreshHotkey(reason: reason) }
+        hotkeyRefreshTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    private func refreshHotkey(reason: String) {
+        guard !quitting else { return }
+        let previousFailure = lastHotkeyFailure
+        let failure = restoreShortcut.refresh(reason: reason)
+        lastHotkeyFailure = failure
+        if let failure { model.errorMessage = failure }
+        else if let previousFailure, model.errorMessage == previousFailure { model.errorMessage = nil }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if exitReady || quitting { return .terminateNow }
@@ -206,8 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return .terminateCancel
     }
     func applicationWillTerminate(_ notification: Notification) {
-        if let hotkey { UnregisterEventHotKey(hotkey) }
-        if let eventHandler { RemoveEventHandler(eventHandler) }
+        hotkeyRefreshTimer?.invalidate()
+        workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        if let displayObserver { NotificationCenter.default.removeObserver(displayObserver) }
+        restoreShortcut.stop()
     }
 }
 

@@ -2,11 +2,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION=1.0.10
+VERSION=1.0.13
 APP_NAME=MinimalDisplay
 BUILD_ROOT="$PWD/build"
 APP="$BUILD_ROOT/$VERSION/$APP_NAME.app"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+# Keep toolchain/manifest caches writable even when a new SDK invalidates old caches.
+export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/module-cache}"
+export SWIFT_MODULECACHE_PATH="${SWIFT_MODULECACHE_PATH:-$PWD/.build/module-cache}"
+export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$PWD/.build/module-cache}"
 SWIFT_FLAGS=(--disable-sandbox --cache-path "$PWD/.build/cache" --config-path "$PWD/.build/config" --security-path "$PWD/.build/security")
 
 # This script only builds artifacts. It does not install, launch, or modify display settings.
@@ -37,7 +41,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>11</string>
+  <key>CFBundleVersion</key><string>14</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>

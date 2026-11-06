@@ -7,8 +7,10 @@ public struct SavedDisplay: Codable, Equatable {
     public let x: Int32
     public let y: Int32
     public let builtin: Bool
-    public init(id: UInt32, uuid: String, x: Int32, y: Int32, builtin: Bool) {
+    public let mode: SavedDisplayMode?
+    public init(id: UInt32, uuid: String, x: Int32, y: Int32, builtin: Bool, mode: SavedDisplayMode? = nil) {
         self.id = id; self.uuid = uuid; self.x = x; self.y = y; self.builtin = builtin
+        self.mode = mode
     }
 }
 

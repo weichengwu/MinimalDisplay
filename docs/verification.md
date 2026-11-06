@@ -2,6 +2,30 @@
 
 此文区分构建、隔离逻辑验证和真实设备验收。当前状态为 **UI 待手测**，不据此承诺所有 macOS 和硬件兼容。
 
+## 1.0.12 快捷键间歇失效
+
+继续使用虚拟屏，不采用物理屏替代方案。现场日志显示 1.0.11 的热键启动注册成功，最近一次菜单恢复成功并保留外屏 2560×1440 / 5120×2880 像素；没有对应的失败按键触发记录。旧版只在主队列调度之后记录 `Restore requested`，因此不能据此确定是 Carbon 没有交付，还是调度没有执行。未将睡眠后的注册失效直接认定为已证实根因。
+
+本次只调整快捷键入口：兼容主键区/小键盘 9；唤醒、用户会话恢复、显示参数变化后合并通知并重建注册；通过 common modes 主运行循环执行已收到的请求；分开记录原始热键到达与恢复执行结果。没有引入全局键盘监听或新的系统隐私权限，没有改变显示恢复事务，保留 1.0.11 的物理屏模式恢复。
+
+只运行 `RestoreShortcutTests` 共 7 项非 UI 用例，全部通过：双键路由、模拟注册丢失后的重建和旧回调过滤、已收到请求在随后重注册失败时仍执行、短时间重复输入合并及退出取消、部分冲突、处理器失败清理，以及真实 CoreFoundation 自定义 common mode 下的调度。已收到请求被错误丢弃的用例先失败，修正后通过。注册使用模拟后端，不注册真实热键；运行循环用例不创建窗口或发送键盘事件。
+
+当前工具链升级后默认模块缓存写入受限目录导致首次编译失败，改为项目内缓存后完成编译和测试。打包检查范围为 Release 构建、Info.plist、签名、ZIP 和 SHA-256。没有自行执行实际键盘、睡眠、锁屏或屏幕恢复验收；真实间歇失效仍为 **UI 待手测**。
+
+通知与调度依据：[NSWorkspace 用户会话通知](https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidbecomeactivenotification)、[CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock(_:_:_:))。
+
+## 1.0.11 物理屏显示模式恢复
+
+旧版 `SavedDisplay` 只保存身份和原点，`SystemDisplayDriver.restore` 只启用屏幕并还原排列，没有捕获或恢复显示模式。先运行 `DisplayModeRecoveryTests/testRecoveryJournalRetainsPhysicalDisplayMode`，确认原显示模式经过实际恢复记录读写后丢失，测试失败；保存模式字段后同一测试通过。该测试证明记录链路的遗漏，不替代真实硬件的掉分辨率复现。
+
+新记录保存界面尺寸、帧缓冲像素、刷新率、I/O 标志及模式 ID。恢复时按显示器身份重新解析可用模式，在同一事务中设置原模式和排列，检查结果；虚拟屏释放后再次核对模式，防止拓扑变动后的重新选择。找不到兼容模式或最终验证失败时保留恢复记录，不静默降至 1080P。正常恢复、启动恢复和独立恢复进程均使用该记录和驱动；旧记录没有 mode 时继续恢复启用/排列，不猜测原模式。
+
+定向执行 `DisplayModeRecoveryTests|DisplaySessionTests|DisplayIdentityResolverTests`，共 27 项非 UI 用例通过。包括显示模式记录往返、旧记录兼容、模式 ID 复用拒绝、逻辑与像素尺寸/刷新率匹配、隔行与拉伸保留、虚拟屏释放后模拟掉回 1080P 再还原、模式恢复失败保留记录并允许重试，以及原有恢复事务顺序与身份校验。未运行无关配置排序、进程接管或全量测试。
+
+打包检查范围为 Release 构建、Info.plist、主程序及恢复程序签名、ZIP 完整性和 SHA-256 回读。没有启动 GUI、创建虚拟屏、改变真实物理屏模式或执行自动 UI 验收，当前为 **UI 待手测**。升级前已经丢失的原显示模式无法从旧记录推断，需要先在系统设置选好分辨率再开始新会话。
+
+显示模式事务参考 [Apple CoreGraphics 文档](https://developer.apple.com/documentation/coregraphics/cgconfiguredisplaywithdisplaymode(_:_:_:_:))。
+
 ## 1.0.10 列表排序
 
 增加每条配置的上移、下移操作，复用「…」菜单和右键菜单，不新增常驻按钮。列表与菜单栏共同读取同一配置数组，顺序按 JSON 数组持久化，无需迁移。只有原子保存成功后才更新界面中的顺序；失败沿用现有错误提示。只移动配置位置，不改变活动虚拟屏、配置字段或显示事务。

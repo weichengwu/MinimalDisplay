@@ -15,8 +15,11 @@ private final class FakeDriver: DisplayDriver {
     var virtualAPIAvailable = true
     var disableAPIAvailable = true
     var events: [String] = []
-    let builtin = SavedDisplay(id: 1, uuid: "builtin", x: 0, y: 0, builtin: true)
-    let external = SavedDisplay(id: 2, uuid: "external", x: 1920, y: 0, builtin: false)
+    var builtin = SavedDisplay(id: 1, uuid: "builtin", x: 0, y: 0, builtin: true)
+    var external = SavedDisplay(id: 2, uuid: "external", x: 1920, y: 0, builtin: false)
+    var modes: [UInt32: SavedDisplayMode] = [:]
+    var onRelease: (() -> Void)?
+    var failFinalModes = false
     var active: Set<UInt32> = [1, 2]
     var nextID: UInt32 = 100
     var exactMode = true
@@ -35,6 +38,7 @@ private final class FakeDriver: DisplayDriver {
         if comesOnline { active.insert(id) }
         return FakeScreen(id: id, settingsApplied: applySettings) { [weak self] in
             self?.events.append("release:\(id)"); self?.active.remove(id)
+            self?.onRelease?()
         }
     }
     func isActive(_ id: UInt32) -> Bool { active.contains(id) }
@@ -54,6 +58,12 @@ private final class FakeDriver: DisplayDriver {
         events.append("restore")
         if failRestore { throw DisplayFailure("restore failed") }
         record.displays.forEach { active.insert($0.id) }
+        for saved in record.displays { if let mode = saved.mode { modes[saved.id] = mode } }
+    }
+    func restoreModes(_ record: RecoveryRecord) throws {
+        events.append("restoreModes")
+        if failFinalModes { throw DisplayFailure("saved physical mode unavailable") }
+        for saved in record.displays { if let mode = saved.mode { modes[saved.id] = mode } }
     }
 }
 
@@ -125,6 +135,36 @@ final class DisplaySessionTests: XCTestCase {
         XCTAssertNil(try files.readRecovery())
         XCTAssertTrue(driver.active.contains(1))
         XCTAssertTrue(driver.active.contains(2))
+    }
+    func testRestoreReappliesOriginal2KModeAfterVirtualDisplayRemoval() throws {
+        let original = SavedDisplayMode(width: 2560, height: 1440, pixelWidth: 5120,
+                                        pixelHeight: 2880, refreshRate: 60, ioFlags: 3, id: 42)
+        let fallback = SavedDisplayMode(width: 1920, height: 1080, pixelWidth: 1920,
+                                        pixelHeight: 1080, refreshRate: 60, ioFlags: 3, id: 99)
+        driver.external = SavedDisplay(id: 2, uuid: "external", x: 1920, y: 0, builtin: false, mode: original)
+        driver.onRelease = { [unowned self] in self.driver.modes[2] = fallback }
+        try session.activate(first)
+        try session.activate(second)
+        XCTAssertEqual(try files.readRecovery()?.displays.last?.mode, original)
+        try session.restore()
+        XCTAssertEqual(driver.modes[2], original, "Removing the virtual screen must not leave the physical screen at 1080P")
+        XCTAssertEqual(Array(driver.events.suffix(3)), ["restore", "release:101", "restoreModes"])
+        XCTAssertNil(try files.readRecovery())
+    }
+    func testUnavailableFinalPhysicalModeKeepsJournalUntilRetrySucceeds() throws {
+        let original = SavedDisplayMode(width: 2560, height: 1440, pixelWidth: 2560,
+                                        pixelHeight: 1440, refreshRate: 60, ioFlags: 3, id: 42)
+        driver.external = SavedDisplay(id: 2, uuid: "external", x: 1920, y: 0, builtin: false, mode: original)
+        try session.activate(first)
+        driver.failFinalModes = true
+        XCTAssertThrowsError(try session.restore())
+        XCTAssertTrue(session.recoveryRequired)
+        XCTAssertEqual(try files.readRecovery()?.displays.last?.mode, original)
+        XCTAssertThrowsError(try session.activate(second))
+        driver.failFinalModes = false
+        try session.restore()
+        XCTAssertFalse(session.recoveryRequired)
+        XCTAssertNil(try files.readRecovery())
     }
     func testMissingGuardPreventsAllMutations() {
         guardReady = false

@@ -75,7 +75,8 @@ public final class DisplaySession {
 
     public func restore() throws {
         do {
-            if let record = try files.readRecovery() {
+            let record = try files.readRecovery()
+            if let record {
                 try driver.restore(record)
                 pause(1.5)
             }
@@ -85,6 +86,14 @@ public final class DisplaySession {
                 throw DisplayFailure("原屏幕已尝试恢复，但显示服务曾超时。为避免再次改变拓扑，虚拟屏对象已保留，请注销或重启 Mac。", stalled: true)
             }
             try releaseScreens(except: nil)
+            if let record, record.displays.contains(where: { $0.mode != nil }) {
+                try driver.restoreModes(record)
+                for saved in record.displays {
+                    if let mode = saved.mode {
+                        files.log("Restored physical mode: \(saved.uuid), interface=\(mode.width)x\(mode.height), pixels=\(mode.pixelWidth)x\(mode.pixelHeight), refresh=\(mode.refreshRate)")
+                    }
+                }
+            }
             try files.clearRecovery()
             recoveryRequired = false
             files.log("Original displays restored")

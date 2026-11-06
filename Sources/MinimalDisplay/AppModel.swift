@@ -35,12 +35,8 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             self.startupRecoveryLock = nil
             guard success else { return }
-            do {
-                let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/MinimalDisplayRecovery")
-                guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw DisplayFailure("找不到独立恢复程序，请使用打包后的完整 App。") }
-                try self.recoveryGuard.start(executable: executable)
-                self.status = "使用原屏幕"
-            } catch { self.errorMessage = "恢复进程启动失败：\(error.localizedDescription)" }
+            self.status = "使用原屏幕"
+            self.startRecoveryGuard()
         }
         heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -55,6 +51,17 @@ final class AppModel: ObservableObject {
         if let heartbeatTimer { RunLoop.main.add(heartbeatTimer, forMode: .common) }
     }
 
+    private func startRecoveryGuard() {
+        guard !terminating else { return }
+        do {
+            let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/MinimalDisplayRecovery")
+            guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+                throw DisplayFailure("找不到独立恢复程序，请使用打包后的完整 App。")
+            }
+            try recoveryGuard.start(executable: executable)
+        } catch { errorMessage = "恢复进程启动失败：\(error.localizedDescription)" }
+    }
+
     func activate(_ profile: DisplayProfile) {
         guard canActivate else { return }
         perform("正在切换到 \(profile.name)…") { try self.session.activate(profile) } completion: { [weak self] success in
@@ -65,7 +72,10 @@ final class AppModel: ObservableObject {
     func restore(reportFailure: Bool = true, completion: ((Bool) -> Void)? = nil) {
         // Emergency restoration is allowed while another transition is in progress; serial queue orders it.
         perform("正在恢复物理屏…", reportFailure: reportFailure) { try self.session.restore() } completion: { [weak self] success in
-            if success { self?.status = "使用原屏幕" }
+            if success {
+                self?.status = "使用原屏幕"
+                self?.startRecoveryGuard()
+            }
             completion?(success)
         }
     }
